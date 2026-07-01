@@ -47,6 +47,11 @@ fix; bake them in from the start instead of iterating later.
 6. **Sufficient length to do the job.** Target by depth (see §4). A "general
    understanding" piece is typically **4–6 minutes**. Don't cram a rich topic
    into 90 seconds.
+7. **Designed, not default.** Looks matter as much as content for a shippable
+   video. Use a **display font for titles/chapters + a clean UI font for body**
+   (never the raw default — it kerns badly at small sizes), a **gradient +
+   vignette background** (not a flat fill), **chapter cards** to structure a
+   long piece, and accent underlines / consistent color roles. See §9.
 
 Before finalizing, self-check against this list. If any item is weak, fix it.
 
@@ -222,15 +227,69 @@ why-it-matters. Keep it compact but intact (no gaps that break the story).
 
 Stay factually accurate; flag legends/myths as such.
 
+**For longer pieces (6 min+),** group these beats into 3–6 **chapters** and drop
+a `chapter_card()` (see §9) before each group. It gives the viewer a mental map,
+adds natural breathing room, and makes the video feel authored rather than a
+flat sequence of scenes.
+
 ---
 
 ## 8. Files in this skill
 
 - `assets/eduscene_template.py` — copy this to start. Defines `EduScene` (base
-  class with `say()`, `end_scene()`, `figure()`, `number_tracker()`, palette,
-  axis-label helpers) and a worked sample scene showing structure + variety.
+  class with `say()`, `end_scene()`, `figure()`, `number_tracker()`, axis-label
+  helpers, **`add_background()`**, display-font **`title()`** with underline, and
+  **`chapter_card()`**), the font pair + palette, and a worked sample scene.
 - `scripts/setup_video_env.sh` — sudo-free toolchain bootstrap (micromamba +
   conda-forge manim + ffmpeg). Idempotent; reuses an existing `./env`.
 
 Keep the generated `.py` script alongside the video so it can be re-rendered or
 iterated later.
+
+---
+
+## 9. Graphic design & polish (make it look shippable)
+
+The difference between "a Manim render" and "a video you'd put in a playlist"
+is mostly typography, background, and structure. The template ships all of this
+— use it.
+
+**Typography (this also fixes kerning).** The raw default font renders
+word-spaces too narrow at small sizes, so captions read like `runtogether`.
+Fix it by pairing two real fonts:
+- `DISPLAY_FONT` (e.g. **Montserrat**, bold) for titles + chapter cards.
+- `BODY_FONT` (e.g. **SF Pro Text**) for subtitles + labels — crisp kerning at
+  small sizes.
+The template sets `Text.set_default(font=BODY_FONT)` so *every* `Text()` uses
+the body face automatically; `title()`/`chapter_card()` override to the display
+face. Confirm the families exist first:
+`python -c "import manimpango; print(sorted(set(manimpango.list_fonts())))"`
+(macOS pairs: Montserrat/SF Pro Text, Poppins/Helvetica Neue, Futura/Avenir
+Next. Linux: install Montserrat + DejaVu/Noto Sans via conda/apt.) If a family
+is missing Pango silently falls back — check a frame.
+
+**Background.** Call `self.add_background()` once at the top of `construct()`.
+It adds a subtle vertical gradient + radial vignette that persists behind every
+scene (`end_scene()` is aware of it and never fades it). Far nicer than a flat
+`#0d1117`. Keep it subtle so text stays legible.
+
+**Chapter cards.** For anything 6 min+, break the video into 3–6 chapters and
+call `self.chapter_card(n, "Title")` between groups of scenes. Each card shows a
+giant faint ghost number, a `CHAPTER N` kicker, the title, and an accent rule —
+it gives the viewer a map and makes the piece feel authored. Pass
+`sfx_fn=sfx` (from the **video-narration** skill) for a whoosh+boom, and it
+auto-narrates the chapter title if `narrate()` is in scope.
+
+**Titles.** `title()` now renders in the display face with an accent underline —
+consistent, designed headers on every scene.
+
+**Prettier graphics — quick wins.** Rounded panels (`RoundedRectangle`) instead
+of sharp boxes; gradient/soft fills on bars; a glow ring behind a focal object
+(a faint filled `Circle` behind it); one accent color per role; generous
+margins. Extract frames (§6) and actually look — dark fills on a dark bg vanish;
+small gray text needs to be bright enough (`DIM` is pre-brightened).
+
+**Sound (pairs with video-narration).** A few tasteful effects lift production
+value a lot — especially a whoosh + deep boom on the intro and each chapter
+card, and a soft chime on a key reveal. The video-narration skill ships a
+synthesized, offline `sfx()` kit for exactly this.

@@ -11,16 +11,33 @@ Render (final 1080p60):  manim -qh <topic>.py SampleExplainer
 """
 
 from manim import *
+import numpy as np
 
 # ---- palette (dark theme; one accent per role) -----------------------------
-BG = "#0d1117"        # background
+BG = "#0d1117"        # legacy solid (used for the subtitle bar tint)
+BG_TOP = "#16222f"    # gradient background — top (see EduScene.add_background)
+BG_BOT = "#05080c"    # gradient background — bottom
 ACCENT = "#58a6ff"    # primary blue
 WARM = "#f0883e"      # orange — contrast/secondary
 GOOD = "#3fb950"      # green — positive/result
 RED = "#EF4135"       # red — danger/emphasis
 GOLD = "#ffd60a"      # yellow — highlight/value
-DIM = "#8b949e"       # gray — labels/secondary text
+DIM = "#aab4bf"       # gray — labels/secondary text (bright enough to read)
 WHITE_ = "#f0f0f0"    # near-white text
+
+# ---- typography (design + kerning) -----------------------------------------
+# Pair a DISPLAY face (titles / chapter cards) with a clean UI face (body /
+# subtitles). A good UI face fixes the cramped word-spacing the default font
+# shows at small sizes. Pick families that exist on your machine; check with:
+#   python -c "import manimpango; print(sorted(set(manimpango.list_fonts())))"
+# macOS good pairs: ("Montserrat","SF Pro Text"), ("Poppins","Helvetica Neue"),
+# ("Futura","Avenir Next"). Linux (install via conda/apt): DejaVu, Noto Sans.
+DISPLAY_FONT = "Montserrat"
+BODY_FONT = "SF Pro Text"
+try:
+    Text.set_default(font=BODY_FONT)   # every Text() defaults to the body face
+except Exception:
+    pass
 
 
 # ===========================================================================
@@ -30,8 +47,31 @@ class EduScene(Scene):
     """Shared helpers: subtitles, clean scene teardown, figures, counters."""
 
     def setup(self):
-        self.camera.background_color = BG
+        self.camera.background_color = BG_BOT
         self._subtitle = None
+        self._bg = None
+
+    # ---- persistent gradient + vignette background ------------------------
+    def add_background(self):
+        """Call ONCE at the start of construct(). Adds a soft vertical-gradient
+        + vignette backdrop that stays behind every scene (end_scene never
+        fades it). Much nicer than a flat fill."""
+        H, W = 360, 640
+        top = np.array([int(BG_TOP[i:i + 2], 16) for i in (1, 3, 5)], float)
+        bot = np.array([int(BG_BOT[i:i + 2], 16) for i in (1, 3, 5)], float)
+        ys = np.linspace(0, 1, H)
+        col = np.outer(1 - ys, top) + np.outer(ys, bot)          # H x 3
+        img = np.repeat(col[:, None, :], W, axis=1)              # H x W x 3
+        xx = np.linspace(-1, 1, W)[None, :]
+        yy = np.linspace(-1, 1, H)[:, None]
+        vig = np.clip(1.0 - 0.33 * (xx ** 2 + yy ** 2), 0.55, 1.0)
+        img = (img * vig[:, :, None]).clip(0, 255).astype(np.uint8)
+        bg = ImageMobject(img)
+        bg.stretch_to_fit_width(config.frame_width)
+        bg.stretch_to_fit_height(config.frame_height)
+        bg.set_z_index(-10)
+        self.add(bg)
+        self._bg = bg
 
     # ---- subtitles (bottom of frame, one idea each) -----------------------
     def say(self, *lines, hold=2.5):
@@ -64,16 +104,58 @@ class EduScene(Scene):
         counters actually fade (otherwise they re-draw at full opacity)."""
         for m in self.mobjects:
             m.clear_updaters()
-        mobs = list(self.mobjects)
+        mobs = [m for m in self.mobjects if m is not self._bg]
         if mobs:
             self.play(*[FadeOut(m) for m in mobs], run_time=run_time)
         self._subtitle = None
 
     # ---- reusable visual building blocks ----------------------------------
-    def title(self, text, color=WHITE_, size=38):
-        t = Text(text, font_size=size, color=color).to_edge(UP, buff=0.6)
-        self.play(Write(t))
-        return t
+    def title(self, text, color=WHITE_, size=38, accent=ACCENT):
+        """Scene title in the DISPLAY face with an accent underline."""
+        t = Text(text, font=DISPLAY_FONT, weight="BOLD", font_size=size,
+                 color=color).to_edge(UP, buff=0.55)
+        ul = Line(LEFT, RIGHT, color=accent, stroke_width=4)
+        ul.set_width(min(t.width * 0.9, 8.5)).next_to(t, DOWN, buff=0.16)
+        self.play(Write(t), GrowFromCenter(ul), run_time=0.9)
+        return VGroup(t, ul)
+
+    def chapter_card(self, num, title_text, color=ACCENT, sfx_fn=None):
+        """Full-screen chapter divider: giant faint ghost number, a 'CHAPTER N'
+        kicker, the title, and an accent rule. Great for structuring a long
+        video. Pass sfx_fn=sfx (from the video-narration skill) to add a
+        whoosh+boom, and it auto-narrates the chapter if narrate is available."""
+        ghost = Text(str(num), font=DISPLAY_FONT, weight="BOLD",
+                     font_size=340, color=color).set_opacity(0.07)
+        kicker = Text("CHAPTER %d" % num, font=DISPLAY_FONT, weight="BOLD",
+                      font_size=26, color=color)
+        title = Text(title_text, font=DISPLAY_FONT, weight="BOLD",
+                     font_size=52, color=WHITE_)
+        block = VGroup(kicker, title).arrange(DOWN, buff=0.32)
+        rule = Line(LEFT, RIGHT, color=color, stroke_width=3)
+        rule.set_width(title.width).next_to(block, DOWN, buff=0.3)
+        if sfx_fn:
+            p = sfx_fn("whoosh")
+            if p:
+                self.add_sound(p)
+        self.play(FadeIn(ghost, scale=1.12), run_time=0.6)
+        if sfx_fn:
+            p = sfx_fn("boom")
+            if p:
+                self.add_sound(p)
+        self.play(FadeIn(kicker, shift=UP * 0.2), run_time=0.4)
+        self.play(Write(title), GrowFromCenter(rule), run_time=0.9)
+        narrated = False
+        try:                        # narrate if video-narration's narrate() exists
+            path, dur = narrate("Chapter %d. %s." % (num, title_text))
+            if path:
+                self.add_sound(path)
+                self.wait(max(1.6, dur) + 0.4)
+                narrated = True
+        except Exception:
+            pass
+        if not narrated:
+            self.wait(2.0)
+        self.end_scene(run_time=0.55)
 
     def corner_stamp(self, text, color=GOLD):
         """A date/label stamp in the top-right (great for timelines/history)."""
@@ -144,9 +226,14 @@ class EduScene(Scene):
 # ===========================================================================
 class SampleExplainer(EduScene):
     def construct(self):
+        self.add_background()          # persistent gradient + vignette backdrop
         self.intro()
+        # chapter cards structure a long video; pass sfx from video-narration
+        # for a whoosh+boom (here we omit it, so it's silent):
+        self.chapter_card(1, "The One Big Idea")
         self.key_idea()
         self.worked_example()
+        self.chapter_card(2, "How Big Is The Effect?")
         self.comparison()
         self.recap()
 

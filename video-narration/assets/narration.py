@@ -196,3 +196,66 @@ def narrate(text):
     except Exception:
         return None, 0.0
     return path, dur
+
+
+# ===========================================================================
+#  Sound effects (synthesized, offline; cached in ./sfx)
+# ===========================================================================
+# A few tasteful effects lift production value a lot — especially a whoosh +
+# deep boom on the intro and each chapter card, and a soft chime on a key
+# reveal. Usage in a scene:
+#     from narration import sfx
+#     p = sfx("boom")
+#     if p: self.add_sound(p)
+# Built-in names: "boom", "whoosh", "chime", "tick". Returns a wav path (cached)
+# or None if numpy/soundfile aren't available (degrades silently).
+SFX_DIR = os.path.join(os.getcwd(), "sfx")
+SFX_SR = 44100
+
+
+def _sfx_samples(name):
+    import numpy as np
+    sr = SFX_SR
+    if name == "boom":                      # deep title / impact hit
+        t = np.linspace(0, 0.75, int(sr * 0.75), False)
+        freq = 120 * np.exp(-t * 3.0) + 44
+        tone = np.sin(2 * np.pi * np.cumsum(freq) / sr) * np.exp(-t * 4.5)
+        thud = (np.random.RandomState(1).randn(len(t)) * np.exp(-t * 45)) * 0.35
+        s = (tone + thud) * 0.55
+    elif name == "whoosh":                  # airy transition
+        t = np.linspace(0, 0.6, int(sr * 0.6), False)
+        n = np.random.RandomState(2).randn(len(t))
+        n = np.convolve(n, np.ones(35) / 35, mode="same")   # soften (lowpass)
+        env = np.sin(np.pi * np.linspace(0, 1, len(t))) ** 2
+        s = n * env * 0.5
+    elif name == "chime":                   # soft positive reveal
+        t = np.linspace(0, 0.8, int(sr * 0.8), False)
+        s = (np.sin(2 * np.pi * 880 * t) * 0.6 +
+             np.sin(2 * np.pi * 1320 * t) * 0.3 +
+             np.sin(2 * np.pi * 1760 * t) * 0.15) * np.exp(-t * 4.0) * 0.38
+    elif name == "tick":                    # subtle click
+        t = np.linspace(0, 0.13, int(sr * 0.13), False)
+        s = np.sin(2 * np.pi * 1150 * t) * np.exp(-t * 42) * 0.3
+    else:
+        return None, sr
+    k = int(sr * 0.006)                      # short fades to kill clicks
+    if len(s) > 2 * k:
+        s[:k] *= np.linspace(0, 1, k)
+        s[-k:] *= np.linspace(1, 0, k)
+    return s.astype(np.float32), sr
+
+
+def sfx(name):
+    """Return a cached wav path for a synthesized sound effect, or None."""
+    path = os.path.join(SFX_DIR, name + ".wav")
+    if not os.path.exists(path):
+        try:
+            import soundfile as sf
+            samples, sr = _sfx_samples(name)
+            if samples is None:
+                return None
+            os.makedirs(SFX_DIR, exist_ok=True)
+            sf.write(path, samples, sr)
+        except Exception:
+            return None
+    return path

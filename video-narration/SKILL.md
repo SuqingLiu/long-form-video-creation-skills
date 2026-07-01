@@ -5,17 +5,20 @@ description: >
   neural text-to-speech (Kokoro by default, Piper as a lighter option). Turns
   each on-screen subtitle line into narration, synced automatically, with no API
   keys and no external services. Use when a user asks to "add audio / narration
-  / a voice / voice-over" to a Manim video (e.g. one made with the
-  educational-video skill), or to make a silent subtitled video speak. Handles
-  engine setup, a drop-in narration module, spoken-text normalization (symbols →
-  words), sync, and clip caching.
+  / a voice / voice-over / sound effects" to a Manim video (e.g. one made with
+  the educational-video skill), or to make a silent subtitled video speak.
+  Handles engine setup, a drop-in narration module, spoken-text normalization
+  (symbols → words), sync, clip caching, AND a synthesized offline sound-effects
+  kit (whoosh / boom / chime / tick) for intros and chapter cards.
 ---
 
-# Video narration (offline neural TTS)
+# Video narration (offline neural TTS + sound effects)
 
-Give a subtitled video a spoken voice-over. The subtitles ARE the script — each
-`self.say(...)` line is synthesized and played in sync as it appears. Runs fully
-offline, no API keys, and caches clips so re-renders are instant.
+Give a subtitled video a spoken voice-over — plus a few tasteful sound effects.
+The subtitles ARE the script: each `self.say(...)` line is synthesized and played
+in sync as it appears. Runs fully offline, no API keys, and caches clips so
+re-renders are instant. A synthesized **`sfx()`** kit adds intro/chapter-card
+punch (see §7).
 
 **Engine:** default is **Kokoro-82M** — a modern neural voice that sounds
 genuinely natural (classic TTS like Piper sounds noticeably robotic). Piper is
@@ -211,7 +214,40 @@ means the closing scene uses `FadeIn`/`Write` instead of `say()`.
 
 ---
 
-## 7. Tips
+## 7. Sound effects (offline, synthesized)
+
+Beyond the voice-over, a few tasteful effects noticeably lift production value —
+especially a **whoosh + deep boom on the intro and each chapter card**, and a
+**soft chime on a key reveal**. `narration.py` ships a synthesized, offline,
+cached SFX kit — no asset files to download.
+
+```python
+from narration import sfx
+
+p = sfx("boom")            # -> a cached wav path (or None if unavailable)
+if p:
+    self.add_sound(p)      # place it exactly where the beat lands
+self.play(Write(title))
+```
+
+Built-in names: **`boom`** (deep impact — titles), **`whoosh`** (airy
+transition — reveals / chapter cards), **`chime`** (soft positive — a key
+reveal or closing line), **`tick`** (subtle click). Clips are generated with
+numpy and cached in `./sfx`; `sfx()` returns `None` (silent) if numpy/soundfile
+aren't present, so it never crashes a render.
+
+Recommended placement (keep it sparse — a few beats, not every scene):
+- **Intro:** `whoosh` on the first reveal, then `boom` as the title lands.
+- **Chapter cards:** `whoosh` → `boom` (the `educational-video` `chapter_card()`
+  helper takes `sfx_fn=sfx` and does this for you).
+- **Finale / big number:** a single `chime`.
+
+Because effects are added with `add_sound` just like narration, the same
+animation-cache rule applies — which is already handled automatically on import.
+
+---
+
+## 8. Tips
 
 - **Pick the voice before the big render.** Test a couple of lines from the
   setup output first.
@@ -221,10 +257,11 @@ means the closing scene uses `FadeIn`/`Write` instead of `say()`.
 
 ---
 
-## 8. Files in this skill
+## 9. Files in this skill
 
 - `scripts/setup_narration.sh` — installs Kokoro (or Piper) + downloads the
   model/voice into the project.
 - `assets/narration.py` — drop-in module: `narrate()` (synthesize + cache +
-  duration), `spoken_text()`/`_SPOKEN_SUBS` (normalization), Kokoro/Piper
+  duration), **`sfx()`** (synthesized sound-effects kit),
+  `spoken_text()`/`_SPOKEN_SUBS` (normalization), Kokoro/Piper
   auto-select, env-var controls, graceful silent fallback.
