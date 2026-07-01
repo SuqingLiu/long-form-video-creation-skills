@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+# never commit generated media, TTS caches, or downloaded models
+media/
+frames/
+frames_qa/
+narration/
+voices/
+kokoro/
+env/
+mamba/
+bin/
+*.mp4
